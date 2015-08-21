@@ -1,2 +1,15 @@
 language: csharp
+sudo: required
+before_script:
+    - sudo pip2 install --upgrade pip
+    - sudo pip2 install pylint
+    - sudo pip2 install buildbot
+    - sudo pip2 install requests
+    - EC2PBOTMASTERIP=dummy make -C performancebot pylint
+    - npm i -g eslint
+    - npm i -g babel-eslint
+    - npm i -g eslint-plugin-react
+    - make -C front-end
+    - make -C front-end lint
+    - make -C accredit/cloud-code lint
 solution: tools/tools.sln

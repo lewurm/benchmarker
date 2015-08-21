@@ -1,11 +1,28 @@
+body {
+	font-family: sans-serif;
+	margin: 0;
+	padding: 0;
+}
+
 .diagnostic {
 	font-style: italic;
+}
+
+.DiagnosticBlock {
+	margin: 16px;
+	overflow: hidden; /* BFC */
+	text-align: center;
+}
+
+label {
+	font-size: small;
+	margin: 8px;
 }
 
 /* ConfigDescription, MachineDescription */
 
 .Description {
-	padding: 0 4px;
+	margin: 16px;
 	vertical-align: top;
 	font-family: sans-serif;
 }
@@ -19,22 +36,69 @@
 }
 
 .Description > dl > dd {
-	margin-left: 16px;
+	margin-left: 8px;
 }
 
 .Description > dl > dt {
-	font-weight: bold;
+	font-size: small;
 }
 
-/* ConfigSelector, RunSetSelector */
+/* ConfigSelector, CombinedConfigSelector */
 
-.ConfigSelector > select, .RunSetSelector > select {
-	border: 1px solid black;
-	margin: 8px 4px;
-	height: 6em;
+.ConfigSelector, .CombinedConfigSelector {
+	width: 100%;
+	margin: 8px 0;
 }
 
-.ConfigSelector > select > option, .RunSetSelector > select > option {
-	font-family: sans-serif;
-	padding: 4px;
+.ConfigSelector > select, .CombinedConfigSelector > select {
+	display: block;
+	margin: 8px;
+}
+
+.CombinedConfigSelector button {
+	margin-left: 8px;
+}
+
+/* Navigation */
+
+.Navigation {
+	background: #2C3E50;
+	margin: 0;
+}
+
+.Navigation > ul {
+	width: 50%;
+	height: 100%;
+	margin: 0 auto;
+	list-style-type: none;
+	text-align: center;
+	padding: 0;
+}
+
+.Navigation > ul > li {
+	display: inline-block;
+}
+
+.Navigation > ul > li > a {
+	color: #BDC3C7;
+	display: inline-block;
+	padding: 16px;
+	text-decoration: none;
+}
+
+.Navigation > ul > li.selected > a {
+	background: #ffffff;
+	color: #2C3E50;
+}
+
+.Navigation > ul > li.deselected > a:focus, .Navigation > ul > li.deselected > a:hover {
+	color: #FFFFFF;
+	background: #3A526A;
+}
+
+/* AMChart */
+
+.AMChart {
+	overflow: hidden; /* BFC */
+	margin: 16px;
 }

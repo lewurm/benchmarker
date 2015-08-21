@@ -1,7 +1,5 @@
 /* @flow */
 
-/* global google */
-
 "use strict";
 
 import * as xp_utils from './utils.js';
@@ -73,11 +71,12 @@ class Page extends React.Component {
 		else
 			detail = <RunSetDescription controller={this.props.controller} runSet={this.state.selection.runSet} />;
 
-		return <div>
+		return <div className="RunSetPage">
+			<xp_common.Navigation currentPage="" />
 			<xp_common.RunSetSelector
-		controller={this.props.controller}
-		selection={this.state.selection}
-		onChange={this.handleChange.bind (this)} />
+				controller={this.props.controller}
+				selection={this.state.selection}
+				onChange={this.handleChange.bind (this)} />
 			{detail}
 		</div>;
 	}
@@ -99,7 +98,7 @@ class RunSetDescription extends React.Component {
 				return query;
 			},
 			results => {
-				if (runSet != this.props.runSet)
+				if (runSet !== this.props.runSet)
 					return;
 				this.setState ({runs: results});
 			},
@@ -116,12 +115,22 @@ class RunSetDescription extends React.Component {
 		var runSet = this.props.runSet;
 		var buildURL = runSet.get ('buildURL');
 		var buildLink;
+		var logURLs = runSet.get ('logURLs');
+		var logLinks;
 		var timedOutBenchmarks;
 		var crashedBenchmarks;
 		var table;
 
 		if (buildURL !== undefined)
 			buildLink = [<dt>Build</dt>, <dd><a href={buildURL}>Link</a></dd>];
+
+		if (logURLs !== undefined && Object.keys (logURLs).length !== 0) {
+			logLinks = [<dt>Logs</dt>];
+			for (var key in logURLs) {
+				var url = logURLs[key];
+				logLinks.push(<dd>{key}: <a href={url}>{url}</a></dd>);
+			}
+		}
 
 		var timedOutString = xp_common.joinBenchmarkNames (this.props.controller, runSet.get ('timedOutBenchmarks'), "");
 		if (timedOutString !== "")
@@ -140,24 +149,32 @@ class RunSetDescription extends React.Component {
 			table = <table>
 				{benchmarkNames.map (name => {
 					var runs = runsByBenchmarkName [name];
+					var benchmark = this.props.controller.benchmarkForId (runs [0].get ('benchmark').id);
+					var disabled = "";
+					if (benchmark.get ('disabled'))
+						disabled = " (disabled)";
 					var elapsed = runs.map (r => r.get ('elapsedMilliseconds'));
 					elapsed.sort ();
 					var elapsedString = elapsed.join (", ");
-					return <tr><td>{name}</td><td>{elapsedString}</td></tr>})}
+					return <tr><td>{name + disabled}</td><td>{elapsedString}</td></tr>;
+				})}
 			</table>;
 		}
 
 		var commitHash = runSet.get ('commit').get ('hash');
 
 		return <div className="Description">
+			<p><a href={"compare.html#" + runSet.id}>Compare</a></p>
 			<dl>
-			<dt>Commit</dt>
-			<dd><a href={xp_common.githubCommitLink (commitHash)}>{commitHash}</a></dd>
-			{buildLink}
-		{timedOutBenchmarks}
-		{crashedBenchmarks}
-		</dl>
-		{table}
+				<dt>Commit</dt>
+				<dd><a href={xp_common.githubCommitLink (commitHash)}>{commitHash}</a></dd>
+				{buildLink}
+				{logLinks}
+				{timedOutBenchmarks}
+				{crashedBenchmarks}
+				<dt>Elapsed Times</dt>
+				<dd>{table}</dd>
+			</dl>
 		</div>;
 	}
 }
@@ -167,6 +184,7 @@ function started () {
 	if (window.location.hash)
 		startupRunSetId = window.location.hash.substring (1);
 	var controller = new Controller (startupRunSetId);
+	controller.loadAsync ();
 }
 
 xp_common.start (started);

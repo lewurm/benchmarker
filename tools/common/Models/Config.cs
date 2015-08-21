@@ -5,7 +5,6 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using Parse;
 using System.Threading.Tasks;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Collections;
 using System.Text;
@@ -13,8 +12,10 @@ using Benchmarker.Common.Git;
 
 namespace Benchmarker.Common.Models
 {
-	public class Config
+    public class Config
 	{
+		const string rootVarString = "$ROOT";
+
 		public string Name { get; set; }
 		public int Count { get; set; }
 		public bool NoMono {get; set; }
@@ -22,7 +23,6 @@ namespace Benchmarker.Common.Models
 		public string[] MonoOptions { get; set; }
 		public Dictionary<string, string> MonoEnvironmentVariables { get; set; }
 		public Dictionary<string, string> UnsavedMonoEnvironmentVariables { get; set; }
-		public string ResultsDirectory { get; set; }
 
 		public string MonoExecutable {
 			get {
@@ -36,13 +36,29 @@ namespace Benchmarker.Common.Models
 		{
 		}
 
+		static void ExpandRootInEnvironmentVariables (Dictionary<string, string> processedEnvVars, Dictionary<string, string> unexpandedEnvVars, string root)
+		{
+			foreach (var kvp in unexpandedEnvVars) {
+				var key = kvp.Key;
+				var unexpandedValue = kvp.Value;
+				if (unexpandedValue.Contains (rootVarString)) {
+					if (root != null)
+						processedEnvVars [key] = unexpandedValue.Replace (rootVarString, root);
+					else
+						throw new InvalidDataException ("Configuration requires a root directory.");
+				} else {
+					processedEnvVars [key] = unexpandedValue;
+				}
+			}
+		}
+
 		public static Config LoadFrom (string filename, string root)
 		{
 			using (var reader = new StreamReader (new FileStream (filename, FileMode.Open))) {
 				var config = JsonConvert.DeserializeObject<Config> (reader.ReadToEnd ());
 
 				if (String.IsNullOrEmpty (config.Name))
-					throw new InvalidDataException ("Name");
+					throw new InvalidDataException ("Configuration does not have a `Name`.");
 
 				if (config.NoMono) {
 					Debug.Assert (config.MonoOptions == null || config.MonoOptions.Length == 0);
@@ -53,7 +69,9 @@ namespace Benchmarker.Common.Models
 				if (String.IsNullOrEmpty (config.Mono)) {
 					config.Mono = String.Empty;
 				} else if (root != null) {
-					config.Mono = config.Mono.Replace ("$ROOT", root);
+					config.Mono = config.Mono.Replace (rootVarString, root);
+				} else if (config.Mono.Contains (rootVarString)) {
+					throw new InvalidDataException ("Configuration requires a root directory.");
 				}
 
 				if (config.Count < 1)
@@ -68,14 +86,8 @@ namespace Benchmarker.Common.Models
 					config.UnsavedMonoEnvironmentVariables = new Dictionary<string, string> ();
 
 				config.processedMonoEnvironmentVariables = new Dictionary<string, string> ();
-
-				foreach (var kvp in config.MonoEnvironmentVariables)
-					config.processedMonoEnvironmentVariables [kvp.Key] = kvp.Value.Replace ("$ROOT", root);
-				foreach (var kvp in config.UnsavedMonoEnvironmentVariables)
-					config.processedMonoEnvironmentVariables [kvp.Key] = kvp.Value.Replace ("$ROOT", root);
-
-				if (String.IsNullOrEmpty (config.ResultsDirectory))
-					config.ResultsDirectory = "results";
+				ExpandRootInEnvironmentVariables (config.processedMonoEnvironmentVariables, config.MonoEnvironmentVariables, root);
+				ExpandRootInEnvironmentVariables (config.processedMonoEnvironmentVariables, config.UnsavedMonoEnvironmentVariables, root);
 
 				return config;
 			}
@@ -115,19 +127,7 @@ namespace Benchmarker.Common.Models
 			return builder.ToString ();
 		}
 
-		static Octokit.GitHubClient gitHubClient;
-		static Octokit.GitHubClient GitHubClient {
-			get {
-				if (gitHubClient == null) {
-					gitHubClient = new Octokit.GitHubClient (new Octokit.ProductHeaderValue ("XamarinBenchmark"));
-					if (gitHubClient == null)
-						throw new Exception ("Could not instantiate GitHub client");
-				}
-				return gitHubClient;
-			}
-		}
-
-		public async Task<Commit> GetCommit (string optionalCommitHash)
+		public async Task<Commit> GetCommit (string optionalCommitHash, string optionalGitRepoDir)
 		{
 			if (NoMono) {
 				// FIXME: return a dummy commit
@@ -160,7 +160,7 @@ namespace Benchmarker.Common.Models
 				Console.WriteLine ("branch: " + commit.Branch + " hash: " + commit.Hash + " date: " + date);
 			} else {
 				if (optionalCommitHash == null) {
-					Console.WriteLine ("Error: cannot parse mono version and no commit given.");
+					Console.Error.WriteLine ("Error: cannot parse mono version and no commit given.");
 					return null;
 				}
 			}
@@ -170,14 +170,15 @@ namespace Benchmarker.Common.Models
 
 			if (optionalCommitHash != null) {
 				if (commit.Hash != null && !optionalCommitHash.StartsWith (commit.Hash)) {
-					Console.WriteLine ("Error: Commit hash specified on command line does not match the one reported with --version.");
+					Console.Error.WriteLine ("Error: Commit hash specified on command line does not match the one reported with --version.");
 					return null;
 				}
 				commit.Hash = optionalCommitHash;
 			}
 
 			try {
-				var repo = new Repository (Path.GetDirectoryName (Mono));
+				var gitRepoDir = optionalGitRepoDir ?? Path.GetDirectoryName (Mono);
+				var repo = new Repository (gitRepoDir);
 				var gitHash = repo.RevParse (commit.Hash);
 				if (gitHash == null) {
 					Console.WriteLine ("Could not get commit " + commit.Hash + " from repository");
@@ -185,7 +186,7 @@ namespace Benchmarker.Common.Models
 					Console.WriteLine ("Got commit " + gitHash + " from repository");
 
 					if (optionalCommitHash != null && optionalCommitHash != gitHash) {
-						Console.WriteLine ("Error: Commit hash specified on command line does not match the one from the git repository.");
+						Console.Error.WriteLine ("Error: Commit hash specified on command line does not match the one from the git repository.");
 						return null;
 					}
 
@@ -194,7 +195,7 @@ namespace Benchmarker.Common.Models
 					commit.CommitDate = repo.CommitDate (commit.Hash);
 
 					if (commit.CommitDate == null) {
-						Console.WriteLine ("Error: Could not get commit date from the git repository.");
+						Console.Error.WriteLine ("Error: Could not get commit date from the git repository.");
 						return null;
 					}
 
@@ -204,10 +205,10 @@ namespace Benchmarker.Common.Models
 				Console.WriteLine ("Could not get git repository");
 			}
 
-			var github = GitHubClient;
 			Octokit.Commit gitHubCommit = null;
 			try {
-				gitHubCommit = await github.GitDatabase.Commit.Get ("mono", "mono", commit.Hash);
+				var gitHubClient = GitHubInterface.GitHubClient;
+				gitHubCommit = await ParseInterface.RunWithRetry (() => gitHubClient.GitDatabase.Commit.Get ("mono", "mono", commit.Hash), typeof (Octokit.NotFoundException));
 			} catch (Octokit.NotFoundException) {
 				Console.WriteLine ("Commit " + commit.Hash + " not found on GitHub");
 			}
@@ -215,7 +216,7 @@ namespace Benchmarker.Common.Models
 				Console.WriteLine ("Could not get commit " + commit.Hash + " from GitHub");
 			} else {
 				if (optionalCommitHash != null && optionalCommitHash != gitHubCommit.Sha) {
-					Console.WriteLine ("Error: Commit hash specified on command line does not match the one from GitHub.");
+					Console.Error.WriteLine ("Error: Commit hash specified on command line does not match the one from GitHub.");
 					return null;
 				}
 
@@ -290,22 +291,31 @@ namespace Benchmarker.Common.Models
 			return true;
 		}
 
-		public async Task<ParseObject> GetOrUploadToParse (List<ParseObject> saveList)
+		public async Task<ParseObject> GetFromParse ()
 		{
-			var results = await ParseObject.GetQuery ("Config")
+			var results = await ParseInterface.RunWithRetry (() => ParseObject.GetQuery ("Config")
 				.WhereEqualTo ("name", Name)
 				.WhereEqualTo ("monoExecutable", MonoExecutable)
-				.FindAsync ();
+				.FindAsync ());
+			//Console.WriteLine ("FindAsync Config");
 			foreach (var o in results) {
 				if (EqualToParseObject (o)) {
 					Console.WriteLine ("found config " + o.ObjectId);
 					return o;
 				}
 			}
+			return null;
+		}
+
+		public async Task<ParseObject> GetOrUploadToParse (List<ParseObject> saveList)
+		{
+			var obj = await GetFromParse ();
+			if (obj != null)
+				return obj;
 
 			Console.WriteLine ("creating new config");
 
-			var obj = ParseInterface.NewParseObject ("Config");
+			obj = ParseInterface.NewParseObject ("Config");
 			obj ["name"] = Name;
 			obj ["monoExecutable"] = MonoExecutable;
 			obj ["monoOptions"] = MonoOptions;

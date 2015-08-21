@@ -1,9 +1,9 @@
 # Stuff you should feel safe changing
 
-PAGES = compare config machine timeline runset
-COMMON = common utils
-DEPS = babel-loader parse react
-STYLES = common compare style timeline
+PAGES = compare config machine timeline runset pullrequest
+COMMON = common utils charts
+DEPS = babel-loader parse react github-api
+STYLES = common compare style timeline pullrequest
 
 # Sources and targets
 
@@ -20,7 +20,7 @@ all : $(PAGE_TARGETS) $(STYLE_TARGETS)
 .PHONY : lint
 lint :
 	@echo 'Linting...'
-	@eslint src
+	@eslint -f compact src
 
 .PHONY : clean
 clean :

@@ -1,10 +1,10 @@
 /* @flow */
 
-/* global google */
-
 "use strict";
 
 import * as xp_common from './common.js';
+import * as xp_utils from './utils.js';
+import * as xp_charts from './charts.js';
 import {Parse} from 'parse';
 import React from 'react';
 
@@ -74,51 +74,56 @@ class Page extends React.Component {
 	}
 
 	render () {
-
 		var chart;
+		var benchmarkChartList;
+		var selected = this.state.machine !== undefined && this.state.config !== undefined;
 
-		if (this.state.machine === undefined || this.state.config === undefined)
-			chart = <div className="diagnostic">Please select a machine and config.</div>;
-		else
-			chart = <Chart
-		controller={this.props.controller}
-		machine={this.state.machine}
-		config={this.state.config}
-		runSetSelected={this.runSetSelected.bind (this)}
-			/>;
+		if (selected) {
+			chart = <AllBenchmarksChart
+				graphName={'allBenchmarksChart'}
+				controller={this.props.controller}
+				machine={this.state.machine}
+				config={this.state.config}
+				runSetSelected={this.runSetSelected.bind (this)}
+				/>;
+			benchmarkChartList = <BenchmarkChartList
+				controller={this.props.controller}
+				machine={this.state.machine}
+				config={this.state.config}
+				runSetSelected={this.runSetSelected.bind (this)}
+				/>;
+		} else {
+			chart = <div className="DiagnosticBlock">Please select a machine and config.</div>;
+		}
 
 		var comparisonChart;
 		if (this.state.runSets.length > 1)
-			comparisonChart = <xp_common.ComparisonChart controller={this.props.controller} runSets={this.state.runSets} />;
+			comparisonChart = <xp_charts.ComparisonAMChart graphName="comparisonChart" controller={this.props.controller} runSets={this.state.runSets} />;
 
-		return <div className="Timeline">
-			<table>
-				<tr>
-					<td>
-						<xp_common.CombinedConfigSelector
-							controller={this.props.controller}
-							machine={this.state.machine}
-							config={this.state.config}
-							onChange={this.setState.bind (this)} />
-					</td>
-					<td>
-						<xp_common.MachineDescription
-							machine={this.state.machine}
-							omitHeader={true} />
-					</td>
-					<td>
-						<xp_common.ConfigDescription
-							config={this.state.config}
-							omitHeader={true} />
-					</td>
-				</tr>
-			</table>
-			{chart}
-			{comparisonChart}
+		return <div className="TimelinePage">
+			<xp_common.Navigation currentPage="timeline" />
+			<article>
+				<div className="panel">
+					<xp_common.CombinedConfigSelector
+						controller={this.props.controller}
+						machine={this.state.machine}
+						config={this.state.config}
+						onChange={this.setState.bind (this)}
+						showControls={false} />
+					<xp_common.MachineDescription
+						machine={this.state.machine}
+						omitHeader={true} />
+					<xp_common.ConfigDescription
+						config={this.state.config}
+						omitHeader={true} />
+				</div>
+				{chart}
+				<div style={{ clear: 'both' }}></div>
+				{comparisonChart}
+				{benchmarkChartList}
+			</article>
 		</div>;
-
 	}
-
 }
 
 function tooltipForRunSet (controller: Controller, runSet: Parse.Object) {
@@ -137,7 +142,9 @@ function tooltipForRunSet (controller: Controller, runSet: Parse.Object) {
 }
 
 function runSetIsBroken (controller: Controller, runSet: Parse.Object) {
-	var timedOutOrCrashedBenchmarks = runSet.get ('timedOutBenchmarks').concat (runSet.get ('crashedBenchmarks'));
+	var timedOutBenchmarks = runSet.get ('timedOutBenchmarks') || [];
+	var crashedBenchmarks = runSet.get ('crashedBenchmarks') || [];
+	var timedOutOrCrashedBenchmarks = timedOutBenchmarks.concat (crashedBenchmarks);
 	for (var i = 0; i < timedOutOrCrashedBenchmarks.length; ++i) {
 		var benchmark = timedOutOrCrashedBenchmarks [i];
 		var name = controller.benchmarkNameForId (benchmark.id);
@@ -147,14 +154,26 @@ function runSetIsBroken (controller: Controller, runSet: Parse.Object) {
 	return false;
 }
 
-class Chart extends xp_common.GoogleChartsStateComponent {
+type TimelineChartProps = {
+	graphName: string;
+	controller: Controller;
+	machine: Parse.Object;
+	config: Parse.Object;
+	benchmark: string;
+	runSetSelected: (runSet: Parse.Object) => void;
+};
+
+class TimelineChart extends React.Component<TimelineChartProps, TimelineChartProps, void> {
 
 	sortedRunSets : Array<Parse.Object>;
 	table : void | Array<Object>;
 
 	constructor (props) {
 		super (props);
-		this.invalidateState (props.machine, props.config);
+	}
+
+	componentWillMount () {
+		this.invalidateState (this.props.machine, this.props.config);
 	}
 
 	componentWillReceiveProps (nextProps) {
@@ -167,32 +186,20 @@ class Chart extends xp_common.GoogleChartsStateComponent {
 		if (this.table === undefined)
 			return <div className="diagnostic">Loading&hellip;</div>;
 
-		return <xp_common.TimelineAMChart
-			graphName='timelineChart'
+		return <xp_charts.TimelineAMChart
+			graphName={this.props.graphName}
 			height={300}
 			data={this.table}
-			selectListener={this.selectListener.bind (this)} />;
+			selectListener={this.props.runSetSelected.bind (this)} />;
 	}
 
-	selectListener (itemIndex) {
-		console.log ("selected ", itemIndex);
-		var runSet = this.sortedRunSets [itemIndex];
-		this.props.runSetSelected (runSet);
-	}
-
-	googleChartsLoaded () {
-		this.invalidateState (this.props.machine, this.props.config);
+	computeTable () {
 	}
 
 	invalidateState (machine, config) {
 		this.table = undefined;
 
-		var i = 0, j = 0;
-		var allBenchmarks = this.props.controller.allBenchmarks;
 		var runSets = this.props.controller.runSetsForMachineAndConfig (machine, config);
-
-		if (!xp_common.canUseGoogleCharts ())
-			return;
 
 		runSets.sort ((a, b) => {
 			var aDate = a.get ('commit').get ('commitDate');
@@ -203,6 +210,18 @@ class Chart extends xp_common.GoogleChartsStateComponent {
 		});
 
 		this.sortedRunSets = runSets;
+
+		this.computeTable ();
+
+		this.forceUpdate ();
+	}
+}
+
+class AllBenchmarksChart extends TimelineChart {
+	computeTable () {
+		var runSets = this.sortedRunSets;
+		var i = 0, j = 0;
+		var allBenchmarks = this.props.controller.allEnabledBenchmarks ();
 
 		/* A table of run data. The rows are indexed by benchmark index, the
 		 * columns by sorted run set index.
@@ -267,9 +286,14 @@ class Chart extends xp_common.GoogleChartsStateComponent {
 				}
 				++count;
 			}
+			if (count === 0) {
+				console.log ("no data for run set " + runSets [j].id);
+				continue;
+			}
 			var tooltip = tooltipForRunSet (this.props.controller, runSets [j]);
 			var broken = runSetIsBroken (this.props.controller, runSets [j]);
 			table.push ({
+				runSet: runSets [j],
 				low: min,
 				lowName: minName,
 				high: max,
@@ -281,7 +305,79 @@ class Chart extends xp_common.GoogleChartsStateComponent {
 		}
 
 		this.table = table;
-		this.forceUpdate ();
+	}
+}
+
+class BenchmarkChart extends TimelineChart {
+	computeTable () {
+		var runSets = this.sortedRunSets;
+		var j = 0;
+
+		var table = [];
+
+		for (j = 0; j < runSets.length; ++j) {
+			var runSet = runSets [j];
+			var average = runSet.get ('elapsedTimeAverages') [this.props.benchmark];
+			var variance = runSet.get ('elapsedTimeVariances') [this.props.benchmark];
+			if (average === undefined)
+				continue;
+			var low = undefined;
+			var high = undefined;
+			if (variance !== undefined) {
+				var stdDev = Math.sqrt (variance);
+				low = average - stdDev;
+				high = average + stdDev;
+			}
+			var tooltip = tooltipForRunSet (this.props.controller, runSet);
+			table.push ({
+				runSet: runSet,
+				geomean: average,
+				low: low,
+				high: high,
+				tooltip: tooltip
+			});
+		}
+
+		this.table = table;
+	}
+}
+
+class BenchmarkChartList extends React.Component {
+	constructor (props) {
+		super (props);
+		this.state = { isExpanded: false };
+	}
+
+	render () {
+		if (!this.state.isExpanded) {
+			return <div className="BenchmarkChartList">
+				<button onClick={this.expand.bind (this)}>Show Benchmarks</button>
+			</div>;
+		}
+
+		var benchmarks = this.props.controller.allEnabledBenchmarks ();
+		benchmarks = xp_utils.sortArrayLexicographicallyBy (benchmarks, b => b.get ('name'));
+		var charts = benchmarks.map (b => {
+			var name = b.get ('name');
+			var key = 'benchmarkChart_' + name;
+			return <div key={key} className="BenchmarkChartList">
+				<h3>{name}</h3>
+				<BenchmarkChart
+				graphName={key}
+				controller={this.props.controller}
+				machine={this.props.machine}
+				config={this.props.config}
+				benchmark={name}
+				runSetSelected={this.props.runSetSelected}
+				/>
+				</div>;
+		});
+
+		return <div>{charts}</div>;
+	}
+
+	expand () {
+		this.setState ({ isExpanded: true });
 	}
 }
 
@@ -296,6 +392,7 @@ function started () {
 		}
 	}
 	var controller = new Controller (machineId, configId);
+	controller.loadAsync ();
 }
 
 xp_common.start (started);

@@ -18,6 +18,9 @@ namespace Benchmarker.Common.Models
 		public Config Config { get; set; }
 		public Commit Commit { get; set; }
 		public string BuildURL { get; set; }
+		public string LogURL { get; set; }
+		public string PullRequestURL { get; set; }
+		public ParseObject PullRequestBaselineRunSet { get; set; }
 
 		List<Benchmark> timedOutBenchmarks;
 		public List<Benchmark> TimedOutBenchmarks { get { return timedOutBenchmarks; } }
@@ -48,17 +51,32 @@ namespace Benchmarker.Common.Models
 			return Tuple.Create (hostname, arch);
 		}
 
-		async Task<ParseObject> GetOrUploadMachineToParse (List<ParseObject> saveList)
+		public static async Task<ParseObject> GetMachineFromParse ()
 		{
 			var hostnameAndArch = LocalHostnameAndArch ();
 			var hostname = hostnameAndArch.Item1;
 			var arch = hostnameAndArch.Item2;
-			var results = await ParseObject.GetQuery ("Machine").WhereEqualTo ("name", hostname).WhereEqualTo ("architecture", arch).FindAsync ();
+			var results = await ParseInterface.RunWithRetry (() => ParseObject.GetQuery ("Machine").WhereEqualTo ("name", hostname).WhereEqualTo ("architecture", arch).FindAsync ());
+			//Console.WriteLine ("FindAsync Machine");
 			if (results.Count () > 0)
 				return results.First ();
-			var obj = ParseInterface.NewParseObject ("Machine");
+			return null;
+		}
+
+		async static  Task<ParseObject> GetOrUploadMachineToParse (List<ParseObject> saveList)
+		{
+			var obj = await GetMachineFromParse ();
+			if (obj != null)
+				return obj;
+			
+			var hostnameAndArch = LocalHostnameAndArch ();
+			var hostname = hostnameAndArch.Item1;
+			var arch = hostnameAndArch.Item2;
+
+			obj = ParseInterface.NewParseObject ("Machine");
 			obj ["name"] = hostname;
 			obj ["architecture"] = arch;
+			obj ["isDedicated"] = false;
 			saveList.Add (obj);
 			return obj;
 		}
@@ -79,9 +97,10 @@ namespace Benchmarker.Common.Models
 			return pos.ToArray ();
 		}
 
-		public static async Task<RunSet> FromId (string id, Config config, Commit commit, string buildURL)
+		public static async Task<RunSet> FromId (string id, Config config, Commit commit, string buildURL, string logURL)
 		{
-			var obj = await ParseObject.GetQuery ("RunSet").GetAsync (id);
+			var obj = await ParseInterface.RunWithRetry (() => ParseObject.GetQuery ("RunSet").GetAsync (id));
+			//Console.WriteLine ("GetAsync RunSet");
 			if (obj == null)
 				throw new Exception ("Could not fetch run set.");
 
@@ -89,14 +108,16 @@ namespace Benchmarker.Common.Models
 				parseObject = obj,
 				StartDateTime = obj.Get<DateTime> ("startedAt"),
 				FinishDateTime = obj.Get<DateTime> ("finishedAt"),
-				BuildURL = obj.Get<string> ("buildURL")
+				BuildURL = obj.Get<string> ("buildURL"),
+				LogURL = logURL
 			};
 
 			var configObj = obj.Get<ParseObject> ("config");
 			var commitObj = obj.Get<ParseObject> ("commit");
 			var machineObj = obj.Get<ParseObject> ("machine");
 
-			await ParseObject.FetchAllAsync (new ParseObject[] { configObj, commitObj, machineObj });
+			await ParseInterface.RunWithRetry (() => ParseObject.FetchAllAsync (new ParseObject[] { configObj, commitObj, machineObj }));
+			//Console.WriteLine ("FindAllAsync config, commit, machine");
 
 			if (!config.EqualToParseObject (configObj))
 				throw new Exception ("Config does not match the one in the database.");
@@ -120,19 +141,45 @@ namespace Benchmarker.Common.Models
 
 		public async Task<ParseObject> UploadToParse ()
 		{
-			Dictionary<string, double> averages = new Dictionary<string, double> ();
+			// FIXME: for amended run sets, delete existing runs of benchmarks we just ran
+
+			var averages = new Dictionary<string, double> ();
+			var variances = new Dictionary<string, double> ();
+			var logURLs = new Dictionary<string, string> ();
 
 			if (parseObject != null) {
 				var originalAverages = parseObject.Get<Dictionary<string, object>> ("elapsedTimeAverages");
 				foreach (var kvp in originalAverages)
 					averages [kvp.Key] = ParseInterface.NumberAsDouble (kvp.Value);
+
+				var originalVariances = parseObject.Get<Dictionary<string, object>> ("elapsedTimeVariances");
+				foreach (var kvp in originalVariances)
+					variances [kvp.Key] = ParseInterface.NumberAsDouble (kvp.Value);
+
+				var originalLogURLs = parseObject.Get<Dictionary<string, object>> ("logURLs");
+				if (originalLogURLs != null) {
+					foreach (var kvp in originalLogURLs)
+						logURLs [kvp.Key] = (string)kvp.Value;
+				}
 			}
 
 			foreach (var result in results) {
-				var avg = result.AverageWallClockTime;
-				if (avg == null)
+				var avgAndVariance = result.AverageAndVarianceWallClockTimeMilliseconds;
+				if (avgAndVariance == null)
 					continue;
-				averages [result.Benchmark.Name] = avg.Value.TotalMilliseconds;
+				averages [result.Benchmark.Name] = avgAndVariance.Item1;
+				variances [result.Benchmark.Name] = avgAndVariance.Item2;
+			}
+
+			if (LogURL != null) {
+				string defaultURL;
+				logURLs.TryGetValue ("*", out defaultURL);
+				if (defaultURL == null) {
+					logURLs ["*"] = LogURL;
+				} else if (defaultURL != LogURL) {
+					foreach (var result in results)
+						logURLs [result.Benchmark.Name] = LogURL;
+				}
 			}
 
 			var saveList = new List<ParseObject> ();
@@ -147,12 +194,23 @@ namespace Benchmarker.Common.Models
 				obj ["commit"] = commit;
 				obj ["buildURL"] = BuildURL;
 				obj ["startedAt"] = StartDateTime;
+
+				if (PullRequestURL != null) {
+					var prObj = ParseInterface.NewParseObject ("PullRequest");
+					prObj ["URL"] = PullRequestURL;
+					prObj ["baselineRunSet"] = PullRequestBaselineRunSet;
+					saveList.Add (prObj);
+
+					obj ["pullRequest"] = prObj;
+				}
 			}
 
 			obj ["finishedAt"] = FinishDateTime;
 
 			obj ["failed"] = averages.Count == 0;
 			obj ["elapsedTimeAverages"] = averages;
+			obj ["elapsedTimeVariances"] = variances;
+			obj ["logURLs"] = logURLs;
 
 			obj ["timedOutBenchmarks"] = await BenchmarkListToParseObjectArray (timedOutBenchmarks, saveList);
 			obj ["crashedBenchmarks"] = await BenchmarkListToParseObjectArray (crashedBenchmarks, saveList);
@@ -160,7 +218,8 @@ namespace Benchmarker.Common.Models
 			Console.WriteLine ("uploading run set");
 
 			saveList.Add (obj);
-			await ParseObject.SaveAllAsync (saveList);
+			await ParseInterface.RunWithRetry (() => ParseObject.SaveAllAsync (saveList));
+			//Console.WriteLine ("SaveAllAsync saveList 1");
 			saveList.Clear ();
 
 			parseObject = obj;
@@ -172,7 +231,8 @@ namespace Benchmarker.Common.Models
 					throw new Exception ("Results must have the same config as their RunSets");
 				await result.UploadRunsToParse (obj, saveList);
 			}
-			await ParseObject.SaveAllAsync (saveList);
+			await ParseInterface.RunWithRetry (() => ParseObject.SaveAllAsync (saveList));
+			//Console.WriteLine ("SaveAllAsync saveList 2");
 
 			Console.WriteLine ("done uploading");
 

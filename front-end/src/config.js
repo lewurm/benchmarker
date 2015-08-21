@@ -17,15 +17,13 @@ class Controller extends xp_common.Controller {
 
 	allDataLoaded () {
 		React.render (
-			React.createElement (
-				xp_common.ConfigDescription,
-				{
-					config: xp_utils.find (
+			<div className="ConfigPage">
+				<xp_common.Navigation currentPage="" />
+				<xp_common.ConfigDescription
+					config={xp_utils.find (
 						this.allConfigs,
-						config => config.id === this.configId
-					)
-				}
-			),
+						config => config.id === this.configId)} />
+			</div>,
 			document.getElementById ('configPage')
 		);
 	}
@@ -37,6 +35,7 @@ function started () {
 	if (window.location.hash)
 		configId = window.location.hash.substring (1);
 	var controller = new Controller (configId);
+	controller.loadAsync ();
 }
 
 xp_common.start (started);

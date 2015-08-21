@@ -1,12 +1,10 @@
 /* @flow */
 
-/* global google */
-
 "use strict";
 
 import * as xp_utils from './utils.js';
 import * as xp_common from './common.js';
-import {Parse} from 'parse';
+import * as xp_charts from './charts.js';
 import React from 'react';
 
 class Controller extends xp_common.Controller {
@@ -28,7 +26,7 @@ class Controller extends xp_common.Controller {
 				var runSet = this.runSetForId (id);
 				var machine = this.machineForId (runSet.get ('machine').id);
 				return {machine: machine, config: runSet.get ('config'), runSet: runSet};
-			});
+			}).concat ([{}]);
 		}
 
 		React.render (
@@ -72,16 +70,21 @@ class Page extends React.Component {
 
 		var chart;
 		if (runSets.length > 1)
-			chart = <xp_common.ComparisonChart controller={this.props.controller} runSets={runSets} />;
+			chart = <xp_charts.ComparisonAMChart graphName="comparisonChart" controller={this.props.controller} runSets={runSets} />;
 		else
-			chart = <div className='diagnostic'>Please select at least two run sets.</div>;
+			chart = <div className="DiagnosticBlock">Please select at least two run sets.</div>;
 
-		return <div>
-			<RunSetSelectorList
-		controller={this.props.controller}
-		selections={this.state.selections}
-		onChange={this.setState.bind (this)} />
-			{chart}
+		return <div class="ComparePage">
+			<header>
+				<xp_common.Navigation currentPage="compare" />
+			</header>
+			<article>
+				<RunSetSelectorList
+					controller={this.props.controller}
+					selections={this.state.selections}
+					onChange={this.setState.bind (this)} />
+				{chart}
+			</article>
 		</div>;
 	}
 }
@@ -93,7 +96,7 @@ class RunSetSelectorList extends React.Component {
 	}
 
 	addSelector () {
-		this.props.onChange ({selections: this.props.selections.concat ({})});
+		this.props.onChange ({selections: this.props.selections.concat ([{}])});
 	}
 
 	removeSelector (i) {
@@ -105,10 +108,10 @@ class RunSetSelectorList extends React.Component {
 			return <section>
 				<button onClick={this.removeSelector.bind (this, index)}>Remove</button>
 				<xp_common.RunSetSelector
-			controller={this.props.controller}
-			selection={selection}
-			onChange={this.handleChange.bind (this, index)} />
-				</section>;
+					controller={this.props.controller}
+					selection={selection}
+					onChange={this.handleChange.bind (this, index)} />
+			</section>;
 		}
 		return <div className="RunSetSelectorList">
 			{this.props.selections.map (renderSelector.bind (this))}
@@ -122,6 +125,7 @@ function started () {
 	if (window.location.hash)
 		startupRunSetIds = window.location.hash.substring (1).split ('+');
 	var controller = new Controller (startupRunSetIds);
+	controller.loadAsync ();
 }
 
 xp_common.start (started);

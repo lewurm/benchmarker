@@ -2,15 +2,12 @@
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Collections;
 using System.Threading.Tasks;
 using Benchmarker.Common.Models;
 
 namespace Benchmarker.Common
 {
-	public class Runner
+    public class Runner
 	{
 		ProcessStartInfo info;
 		Config config;
@@ -111,8 +108,12 @@ namespace Benchmarker.Common
 						} catch (InvalidOperationException) {
 							// The process might have finished already, so we need to catch this.
 						}
-						Console.Out.WriteLine ("stdout:\n{0}", stdout.Result);
-						Console.Out.WriteLine ("stderr:\n{0}", stderr.Result);
+					}
+
+					Console.Out.WriteLine ("stdout:\n{0}", stdout.Result);
+					Console.Out.WriteLine ("stderr:\n{0}", stderr.Result);
+
+					if (!success) {
 						return null;
 					}
 
@@ -131,18 +132,6 @@ namespace Benchmarker.Common
 		public Result.Run Run (out bool timedOut)
 		{
 			return Run (null, null, out timedOut);
-		}
-
-		public ProfileResult.Run ProfilerRun (string profilesDirectory, string profileFilename, out bool timedOut)
-		{
-			var run = Run (profilesDirectory, profileFilename, out timedOut);
-			if (run == null)
-				return null;
-
-			return new ProfileResult.Run {
-				WallClockTime = run.WallClockTime,
-				ProfilerOutput = profileFilename
-			};
 		}
 	}
 }
