@@ -19,7 +19,4 @@ before_script:
     - make -C front-end lint
     - make -C accredit/cloud-code lint
     - bash ./deploy-github-pages.sh
-script:
-    - echo woot
-    - env
 solution: tools/tools.sln
