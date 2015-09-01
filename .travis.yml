@@ -1,6 +1,7 @@
 language: csharp
 sudo: required
 before_script:
+    - env
     - sudo pip2 install --upgrade pip
     - sudo pip2 install pylint
     - sudo pip2 install buildbot
@@ -12,4 +13,9 @@ before_script:
     - make -C front-end
     - make -C front-end lint
     - make -C accredit/cloud-code lint
+    - bash ./deploy-github-pages.sh
 solution: tools/tools.sln
+env:
+  global:
+    GH_REF: github.com/xamarin/benchmarker.git
+    secure: JdFZMDE78J8Uc4wEVzGULld5dutawSVVy6l6wxE/fRLycMalgVXdvn57o+/m1/K50LBxyUJ/n7O79PG9DI3CjQdfJ8cjEpgVCneWmYthZDyMUUWIn3DLAwOFbMWLfUqQQs+zCq8aus08QDQZJt+RtAkub+P5PeY6Plh0IQYDmSg=
