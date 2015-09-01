@@ -18,5 +18,9 @@ before_script:
     - make -C front-end
     - make -C front-end lint
     - make -C accredit/cloud-code lint
+
+script:
+    - env
     - bash ./deploy-github-pages.sh
+
 solution: tools/tools.sln
