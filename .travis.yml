@@ -1,7 +1,7 @@
 env:
   global:
-    GH_REF: github.com/xamarin/benchmarker.git
-    secure: JdFZMDE78J8Uc4wEVzGULld5dutawSVVy6l6wxE/fRLycMalgVXdvn57o+/m1/K50LBxyUJ/n7O79PG9DI3CjQdfJ8cjEpgVCneWmYthZDyMUUWIn3DLAwOFbMWLfUqQQs+zCq8aus08QDQZJt+RtAkub+P5PeY6Plh0IQYDmSg=
+    - GH_REF: github.com/xamarin/benchmarker.git
+    - secure: "gLYX/2tli1MYC+UoyDdw6ANYsUX1VOQ51o6PnmR+S4tFJgx+K+f/gXnYGo62O6ZrP8JfMBRbmCJYm6Hoa0sfGbAJst2ntRItIA8y20Th7NEJvsxXjE22GW+wETSQHDRzXGXukUxA9S3K0e8RFrOo7tFoGiEQycWGjrbmjoMM6yw="
 
 language: csharp
 sudo: required
