@@ -40,7 +40,7 @@ xbuild /t:xtcloghelper /p:Configuration=Debug
 
 OLDIFS=$IFS
 IFS=','
-for i in "Nexus-5_4.4.4",aba2bb7e,"--test-chunk" "Nexus-5_4.4.4-f36cc9c33f1a",f36cc9c33f1a,"--priority"; do
+for i in "Nexus-5_4.4.4",aba2bb7e,"--test-chunk" "Nexus-5_4.4.4-f36cc9c33f1a",f36cc9c33f1a,""; do
 	set $i
 	DEVICENAME=$1
 	DEVICEID=$2
@@ -58,12 +58,17 @@ for i in "Nexus-5_4.4.4",aba2bb7e,"--test-chunk" "Nexus-5_4.4.4-f36cc9c33f1a",f3
 	echo "runSetId: $RUNSETID"
 
 	# build app + uitests
-	(cd AndroidAgent && $XBUILDANDROID /p:Configuration=Release /target:SignAndroidPackage )
-	(cd AndroidAgent.UITests/ && $XBUILDANDROID /p:Configuration=Release )
+	(cd AndroidAgent && $XBUILDANDROID /p:Configuration=Release /verbosity:diagnostic /target:SignAndroidPackage )
+	(cd AndroidAgent.UITests/ && $XBUILDANDROID /verbosity:diagnostic /p:Configuration=Release )
 
 	XTCUPLOADLOG=$(mktemp /tmp/xtc-upload.XXXXXX)
 	UITESTS=(./packages/Xamarin.UITest.*/tools/test-cloud.exe)
 	UITEST="${UITESTS[${#UITESTS[@]} - 1]}" # select most recent version
+
+	# workaround for "Test chunking failed: Unable to find NUnit 2 integration. Expected to find it in: /var/folders/hv/lh9y7pps1vbfsc737h_nl4mh0000gp/T/uitest/a-CE4F288E387B5B50427644AB2C0CCB5544D06478/nunit2/Xamarin.UITest.Integration.NUnit2.exe"
+	# should be fixed in future UITest releases.
+	rm -rf /var/folders/hv/lh9y7pps1vbfsc737h_nl4mh0000gp/T/uitest/a-CE4F288E387B5B50427644AB2C0CCB5544D06478/
+
 	# submit to xtc
 	mono \
 		$UITEST \

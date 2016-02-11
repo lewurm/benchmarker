@@ -1,0 +1,68 @@
+@import "common";
+
+.degree {
+	background: white;
+	.round-bordered();
+	height: 16px;
+	width: 100%;
+}
+
+.degree > .none, .degree > .slight, .degree > .moderate, .degree > .severe {
+	.round-bordered();
+	height: 16px;
+	margin: -1px;
+}
+
+.degree > .none {
+	background: @blue2;
+	width: 1%;
+}
+
+.degree > .slight {
+	background: @green2;
+	width: 10%;
+}
+
+.degree > .moderate {
+	background-color: @amber2;
+	width: 50%;
+}
+
+.degree > .severe {
+	background-color: @red2;
+	width: 100%;
+}
+
+.RunSetPage > article > .panel {
+	background: white;
+	.round-bordered();
+	float: left;
+	margin-right: 16px;
+	padding: 8px;
+	width: 320px;
+}
+
+.RunSetPage > article > .Description {
+	margin: 16px;
+	overflow: hidden;
+}
+
+.RunSetPage > article > .Description .statusColumn {
+	text-align: center;
+}
+
+.RunSetPage > article > .Description .statusIcon {
+	margin: 4px;
+}
+
+.RunSetPage > article > .Description .statusIcon.crashed {
+	color: @red2;
+}
+
+.RunSetPage > article > .Description .statusIcon.timedOut {
+	color: @amber2;
+}
+
+.RunSetPage > article > .Description .statusIcon.good {
+	color: @green2;
+}

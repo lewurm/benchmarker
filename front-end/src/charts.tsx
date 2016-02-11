@@ -12,7 +12,8 @@ import * as xp_utils from './utils.ts';
 import * as Database from './database.ts';
 import React = require ('react');
 
-type Range = [number, number, number, number];
+// [min, mean-stddev, mean+stddev, max, count]
+type Range = [number, number, number, number, number];
 
 function calculateRunsRange (data: Array<number>) : Range {
 	var min: number;
@@ -37,11 +38,11 @@ function calculateRunsRange (data: Array<number>) : Range {
 	var stddev = Math.sqrt (sum) / data.length;
 	if (min === undefined || max === undefined)
 		min = max = 0;
-	return [min, mean - stddev, mean + stddev, max];
+	return [min, mean - stddev, mean + stddev, max, data.length];
 }
 
 function normalizeRange (mean: number, range: Range) : Range {
-	return [range [0] / mean, range [1] / mean, range [2] / mean, range [3] / mean];
+	return [range [0] / mean, range [1] / mean, range [2] / mean, range [3] / mean, range [4]];
 }
 
 function rangeMean (range: Range) : number {
@@ -81,7 +82,7 @@ function dataArrayForResults (resultsByIndex: Array<{[benchmark: string]: Object
 		var row = [benchmarkName, []];
 		var mean = undefined;
 		for (var j = 0; j < resultsByIndex.length; ++j) {
-			var data = resultsByIndex [j][benchmarkName]['results'];
+			var data: Array<number> = resultsByIndex [j][benchmarkName]['results'];
 			var range = calculateRunsRange (data);
 			if (mean === undefined)
 				mean = rangeMean (range);
@@ -187,6 +188,7 @@ type AMChartProps = {
 	options: any;
 	selectListener: (dataItem: any) => void;
     initFunc: (chart: AmCharts.AmSerialChart) => void;
+	selectedIndices: Array<number>;
 };
 
 export class AMChart extends React.Component<AMChartProps, void> {
@@ -196,7 +198,7 @@ export class AMChart extends React.Component<AMChartProps, void> {
 		return React.DOM.div({
 			className: 'AMChart',
 			id: this.props.graphName,
-			style: {height: this.props.height}
+			style: {height: this.props.height},
 		});
 	}
 
@@ -214,6 +216,8 @@ export class AMChart extends React.Component<AMChartProps, void> {
 		if (this.props.height !== nextProps.height)
 			return true;
 		if (!xp_utils.deepEquals (this.props.options, nextProps.options))
+			return true;
+		if (!xp_utils.deepEquals (this.props.selectedIndices, nextProps.selectedIndices))
 			return true;
 		// FIXME: what do we do with the selectListener?
 		return false;
@@ -266,6 +270,7 @@ type ComparisonAMChartProps = {
 	metric: string;
 	runSetLabels: Array<string> | void;
 	graphName: string;
+	selectedIndices: Array<number>;
 };
 
 export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, void> {
@@ -321,6 +326,7 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
             return;
 
 		dataArray = sortDataArrayByDifference (dataArray);
+		const needStddev = dataArray.some ((br: BenchmarkRow) => br [1].some ((r: Range) => r [4] > 1));
 
         var graphs = [];
 		var guides = [];
@@ -338,10 +344,12 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
                 "type": "column",
                 "openField": "stdlow" + i,
                 "closeField": "stdhigh" + i,
-                "switchable": false
+                "switchable": false,
             };
+			const valueText = needStddev ? "Average +/- standard deviation" : "Value";
+			const minMaxText = needStddev ? "\n[[errorBalloon" + i + "]]" : "";
             var errorBar: Object = {
-                "balloonText": "Average +/- standard deviation: [[stdBalloon" + i + "]]\n[[errorBalloon" + i + "]]",
+                "balloonText": valueText + ": [[stdBalloon" + i + "]]" + minMaxText,
                 "bullet": "yError",
                 "bulletAxis": "time",
                 "bulletSize": 5,
@@ -350,12 +358,12 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
                 "valueField": "lowhighavg" + i,
                 "lineAlpha": 0,
                 "visibleInLegend": false,
-                "newStack": true
+                "newStack": true,
             };
 			var guide: Object = {
 				"value": avg,
 				"balloonText": label,
-				"lineThickness": 3
+				"lineThickness": 3,
 			};
 			if (this.props.runSets.length <= xp_common.xamarinColorsOrder.length) {
 				var colors = xp_common.xamarinColors [xp_common.xamarinColorsOrder [i]];
@@ -392,8 +400,12 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
                     max = Math.max (max, range [3]);
 				}
 
-                entry ["stdBalloon" + j] = formatPercentage (range [1]) + "–" + formatPercentage (range [2]);
-                entry ["errorBalloon" + j] = "Min: " + formatPercentage (range [0]) + " Max: " + formatPercentage (range [3]);
+				if (needStddev) {
+					entry ["stdBalloon" + j] = formatPercentage (range [1]) + "–" + formatPercentage (range [2]);
+					entry ["errorBalloon" + j] = "Min: " + formatPercentage (range [0]) + " Max: " + formatPercentage (range [3]);
+				} else {
+					entry ["stdBalloon" + j] = formatPercentage (range [1]);
+				}
             }
             dataProvider.push (entry);
         }
@@ -407,6 +419,9 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
     }
 
     public render () : JSX.Element {
+        if (this.resultsByIndex === undefined || this.resultsByIndex.length === 0)
+            return <div className="diagnostic">No data available.</div>;
+
         if (this.dataProvider === undefined)
             return <div className="diagnostic">Loading&hellip;</div>;
 
@@ -432,15 +447,13 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
                     "stackType": "regular",
                     "minimum": this.min,
                     "maximum": this.max,
-					"guides": this.guides
-                }
+					"guides": this.guides,
+                },
             ],
             "allLabels": [],
             "balloon": {},
             "titles": [],
-            "legend": {
-                "useGraphSettings": true
-            }
+            "legend": { "useGraphSettings": true },
         };
 
         var zoomFunc;
@@ -455,7 +468,8 @@ export class ComparisonAMChart extends React.Component<ComparisonAMChartProps, v
             graphName={this.props.graphName}
             height={700}
             options={options}
-            initFunc={zoomFunc} />;
+            initFunc={zoomFunc}
+			selectedIndices={this.props.selectedIndices}/>;
     }
 }
 
@@ -470,6 +484,7 @@ export interface TimelineParameters {
 	maxBalloonName?: string;
 	color: string;
 	title?: string;
+	bulletSize: number;
 }
 
 type TimelineAMChartProps = {
@@ -481,6 +496,7 @@ type TimelineAMChartProps = {
 	data: Object;
 	selectListener: (runSet: Database.DBRunSet) => void;
 	zoomInterval: {start: number, end: number};
+	selectedIndices: Array<number>;
 };
 
 function graphsForParameters (parameters: TimelineParameters) : Array<Object> {
@@ -493,7 +509,7 @@ function graphsForParameters (parameters: TimelineParameters) : Array<Object> {
 			"lineThickness": 0,
 			"id": parameters.lowName,
 			"valueField": parameters.lowName,
-			"visibleInLegend": false
+			"visibleInLegend": false,
 		},
 		{
 			"balloonText": "[[" + parameters.highBalloonName + "]]",
@@ -506,18 +522,19 @@ function graphsForParameters (parameters: TimelineParameters) : Array<Object> {
 			"lineThickness": 0,
 			"id": parameters.highName,
 			"valueField": parameters.highName,
-			"visibleInLegend": false
+			"visibleInLegend": false,
 		},
 		{
 			"balloonText": "[[" + parameters.midBalloonName + "]]",
 			"bullet": "round",
-			"bulletSize": 4,
+			"bulletSize": parameters.bulletSize,
+			"bulletSizeField": "bulletSize",
 			"lineColor": parameters.color,
 			"lineColorField": "lineColor",
 			"id": parameters.midName,
 			"valueField": parameters.midName,
-			"title": parameters.title
-		}
+			"title": parameters.title,
+		},
 	];
 
 	if (parameters.maxBalloonName !== undefined) {
@@ -528,7 +545,7 @@ function graphsForParameters (parameters: TimelineParameters) : Array<Object> {
 			"lineColor": parameters.color,
 			"id": parameters.maxName,
 			"valueField": parameters.maxName,
-			"visibleInLegend": false
+			"visibleInLegend": false,
 		});
 	}
 
@@ -546,7 +563,7 @@ class TimelineAMChart extends React.Component<TimelineAMChartProps, void> {
 							"axisThickness": 0,
 							"gridThickness": 0,
 							"labelsEnabled": false,
-							"tickLength": 0
+							"tickLength": 0,
 						},
 						"chartScrollbar": {
 							"graph": this.props.parameters [0].midName
@@ -560,13 +577,14 @@ class TimelineAMChart extends React.Component<TimelineAMChartProps, void> {
 								"fontSize": 12,
 								"gridAlpha": 0.07,
 								"title": this.props.title,
-								"logarithmic": this.props.logarithmic
-							}
+								"logarithmic": this.props.logarithmic,
+							},
 						],
 						"allLabels": [],
 						"balloon": {},
 						"titles": [],
                         "dataProvider": this.props.data,
+						"zoomOutOnDataUpdate": false,
 					};
 		if (haveTitles) {
 			timelineOptions ['legend'] = { "useGraphSettings": true };
@@ -587,7 +605,8 @@ class TimelineAMChart extends React.Component<TimelineAMChartProps, void> {
 			height={this.props.height}
 			options={timelineOptions}
 			selectListener={this.props.selectListener}
-			initFunc={zoomFunc} />;
+			initFunc={zoomFunc}
+			selectedIndices={this.props.selectedIndices} />;
 	}
 }
 
@@ -595,10 +614,11 @@ export interface TimelineChartProps {
 	graphName: string;
 	sortedResults: any;
 	zoomInterval: {start: number, end: number};
-	runSetSelected: (runSet: Database.DBObject) => void;
+	runSetSelected: (runSet: Database.DBRunSet) => void;
+	selectedIndices: Array<number>;
 }
 
-export interface TimelineChartState {
+interface TimelineChartState {
 	table: Array<Object>;
 }
 
@@ -621,11 +641,15 @@ export abstract class TimelineChart<Props extends TimelineChartProps> extends Re
 		this.invalidateState (this.props);
 	}
 
+	public shouldUpdateForNextProps (nextProps: Props) : boolean {
+		return this.props.sortedResults !== nextProps.sortedResults
+			|| !xp_utils.deepEquals (this.props.selectedIndices, nextProps.selectedIndices);
+	}
+
 	public componentWillReceiveProps (nextProps: Props) : void {
-		if (this.props.sortedResults === nextProps.sortedResults) {
-			return;
+		if (this.shouldUpdateForNextProps (nextProps)) {
+			this.invalidateState (nextProps);
 		}
-		this.invalidateState (nextProps);
 	}
 
 	public timelineParameters () : Array<TimelineParameters> {
@@ -637,8 +661,9 @@ export abstract class TimelineChart<Props extends TimelineChartProps> extends Re
 				lowBalloonName: "lowName",
 				midBalloonName: "tooltip",
 				highBalloonName: "highName",
-				color: xp_common.xamarinColors.blue [2]
-			}
+				color: xp_common.xamarinColors.blue [2],
+				bulletSize: 4,
+			},
 		];
 	}
 
@@ -648,13 +673,14 @@ export abstract class TimelineChart<Props extends TimelineChartProps> extends Re
 
 		return <TimelineAMChart
 			graphName={this.props.graphName}
-			height={300}
+			height={480}
 			data={this.state.table}
 			parameters={this.timelineParameters ()}
 			logarithmic={this.logarithmic ()}
 			zoomInterval={this.props.zoomInterval}
 			title={this.valueAxisTitle ()}
-			selectListener={(rs: Database.DBRunSet) => this.props.runSetSelected (rs)} />;
+			selectListener={(rs: Database.DBRunSet) => this.props.runSetSelected (rs)}
+			selectedIndices={this.props.selectedIndices}/>;
 	}
 
 	public abstract computeTable (nextProps: Props) : Array<Object>;

@@ -24,7 +24,7 @@ export var xamarinColors = {
 	"red": [ "#F8C6BB", "#F69781", "#F56D4F", "#E2553D", "#BC3C26" ],
 	"amber": [ "#F7E28B", "#F9D33C", "#F1C40F", "#F0B240", "#E7963B" ],
 	"gray": [ "#ECF0F1", "#D1D9DD", "#ADB7BE", "#9AA4AB", "#76828A" ],
-	"asphalt": [ "#889DB5", "#66819E", "#365271", "#2B3E50", "#1C2B39" ]
+	"asphalt": [ "#889DB5", "#66819E", "#365271", "#2B3E50", "#1C2B39" ],
 };
 export var xamarinColorsOrder = [ "blue", "green", "violet", "red", "asphalt", "amber", "gray", "teal" ];
 
@@ -136,10 +136,8 @@ export class CombinedConfigSelector extends React.Component<ConfigSelectorProps,
 		};
 
 		const valueStringForSingleSelection = (selection: MachineConfigSelection) => {
-			if (selection.machine === undefined || selection.config === undefined) {
-				console.log ("what is this?", selection);
-				throw "BLA";
-			}
+			if (selection.machine === undefined || selection.config === undefined)
+				return '';
 			var s = selection.machine.get ('name') + '+' + selection.config.get ('name');
 			if (this.props.includeMetric)
 				s = s + '+' + selection.metric;
@@ -224,7 +222,7 @@ export class CombinedConfigSelector extends React.Component<ConfigSelectorProps,
 		}
 		return <div className="CombinedConfigSelector">
 			<label>Machine &amp; Config</label>
-			<select size={6} value={selectedValue} onChange={(e: React.FormEvent) => this.combinationSelected (e)}>
+			<select size={10} value={selectedValue} onChange={(e: React.FormEvent) => this.combinationSelected (e)}>
 				{featuredTimelinesElement}
 				{Object.keys (machines).map ((m: string) => renderGroup (machines, m))}
 			</select>
@@ -321,10 +319,8 @@ export class RunSetSelector extends React.Component<RunSetSelectorProps, RunSetS
 	}
 
 	private configsSelected (selection: Array<MachineConfigSelection>) : void {
-		if (selection.length !== 1) {
-			console.log ("Error: more than one config selected in RunSetSelector");
+		if (selection.length !== 1)
 			return;
-		}
 		this.props.onChange ({machine: selection [0].machine, config: selection [0].config, runSet: undefined});
 	}
 
@@ -370,7 +366,7 @@ export class RunSetSelector extends React.Component<RunSetSelectorProps, RunSetS
 			runSetsSelect = <div className="diagnostic">No run sets found for this machine and config.</div>;
 		} else {
 			runSetsSelect = <select
-				size={6}
+				size={10}
 				value={runSetId}
 				onChange={(e: React.FormEvent) => this.runSetSelected (e)}>
 				{runSets.map (renderRunSet)}
@@ -437,7 +433,6 @@ export class RunSetDescription extends React.Component<RunSetDescriptionProps, R
 
 		getCommitInfo (runSet.get ('commit'), (info: Object) => {
 			this.setState ({ commitInfo: info } as any);
-			console.log (info);
 		});
 	}
 
@@ -492,8 +487,10 @@ export class RunSetDescription extends React.Component<RunSetDescriptionProps, R
 					return <li key={"commit" + c ['hash']}><a href={link}>{c ['product']} {short}</a></li>;
 				});
 			}
-			secondaryProductsList = [<h1 key="secondaryProductsHeader">Secondary products</h1>,
-					<ul key="secondaryProductsList" className='secondaryProducts'>{elements}</ul>];
+			secondaryProductsList = [
+				<h1 key="secondaryProductsHeader">Secondary products</h1>,
+				<ul key="secondaryProductsList" className='secondaryProducts'>{elements}</ul>,
+			];
 		}
 
 		if (this.state.results === undefined) {
@@ -550,7 +547,7 @@ export class RunSetDescription extends React.Component<RunSetDescriptionProps, R
 
 					var metricColumns = [];
 					metrics.forEach ((m: string) => {
-						var dataPoints = result.metrics [m];
+						var dataPoints = result.metrics [m] || [];
 						dataPoints.sort ();
 						var dataPointsString = dataPoints.join (", ");
 						var variance = Outliers.outlierVariance (dataPoints);
@@ -607,14 +604,53 @@ export class RunSetDescription extends React.Component<RunSetDescriptionProps, R
 	}
 }
 
+export interface RunSetSummaryProps extends React.Props<RunSetSummary> {
+	runSet: Database.DBRunSet;
+	previousRunSet: Database.DBRunSet;
+}
+
+export class RunSetSummary extends React.Component<RunSetSummaryProps, void> {
+	public render () : JSX.Element {
+		var runSet = this.props.runSet;
+		var commitHash = runSet.commit.get ('hash');
+		var commitLink = githubCommitLink (runSet.commit.get ('product'), commitHash);
+
+		var prev = this.props.previousRunSet;
+		var prevItems;
+		if (prev !== undefined) {
+			var prevHash = prev.commit.get ('hash');
+			var prevLink = githubCommitLink (prev.commit.get ('product'), prevHash);
+			var compareLink = githubCompareLink (prevHash, commitHash);
+			prevItems = [
+				<dt key="previousName">Previous</dt>,
+				<dd key="previousValue"><a href={prevLink}>{prevHash.substring (0, 10)}</a><br /><a href={compareLink}>Compare</a></dd>,
+			];
+		}
+
+		var runSetLink = "runset.html#id=" + runSet.get ('id');
+		return <div className="RunSetSummary">
+			<div className="Description">
+			<dl>
+			<dt>Commit</dt>
+			<dd><a href={commitLink}>{commitHash.substring (0, 10)}</a><br /><a href={runSetLink}>Details</a></dd>
+			{prevItems}
+			</dl>
+			</div>
+			</div>;
+	}
+}
+
 export function githubCommitLink (product: string, commit: string) : string {
 	var repo = "";
 	switch (product) {
 		case 'mono':
-			repo = "mono/mono";
+			repo = 'mono/mono';
 			break;
 		case 'monodroid':
-			repo = "xamarin/monodroid";
+			repo = 'xamarin/monodroid';
+			break;
+		case 'benchmarker':
+			repo = 'xamarin/benchmarker';
 			break;
 		default:
 			alert("Unknown product " + product);
@@ -653,7 +689,8 @@ export class Navigation extends React.Component<NavigationProps, void> {
 		var classFor = (page: string) =>
 			this.props.currentPage === page ? 'selected' : 'deselected';
 		var compareLink = "compare.html";
-		if (this.props.comparisonRunSetIds !== undefined) {
+		if (this.props.comparisonRunSetIds !== undefined
+			&& this.props.comparisonRunSetIds.length !== 0) {
 			compareLink = compareLink + "#ids=" + this.props.comparisonRunSetIds.join ("+");
 		}
 		return <div className="Navigation">
@@ -677,6 +714,16 @@ export class Navigation extends React.Component<NavigationProps, void> {
 			</div>
 		</div>;
 	}
+}
+
+/*
+ * "" => []
+ * "a" => ["a"]
+ * "a+" => ["a"]
+ * "a+b" => ["a", "b"]
+ */
+function splitLocationHashValues (values: string) : Array<string> {
+	return values.split ('+').filter ((item: string) => item !== '');
 }
 
 export function parseLocationHashForDict (items: Array<string>, startFunc: (keyMap: Object) => void) : void {
@@ -708,7 +755,7 @@ export function parseLocationHashForDict (items: Array<string>, startFunc: (keyM
 		return;
 	}
 
-	var ids = hash.split ('+');
+	var ids = splitLocationHashValues (hash);
 	Database.fetchParseObjectIds (ids, (keys: Array<number | string>) => {
 		var keyMap = {};
 		keys.forEach ((k: number | string, i: number) => keyMap [items [i]] = k);
@@ -738,12 +785,16 @@ export function parseLocationHashForArray (key: string, startFunc: (keyArray: Ar
 
 	var kv = hash.split ('=');
 	if (kv.length === 2 && kv [0] === key) {
-		var items = kv [1].split ('+');
-		startFunc (items);
+		startFunc (splitLocationHashValues (kv [1]));
 		return;
 	}
 
-	var ids = hash.split ('+');
+	var ids = splitLocationHashValues (hash);
+	if (ids.length === 0) {
+		startFunc ([]);
+		return;
+	}
+
 	Database.fetchParseObjectIds (ids, startFunc,
 		(error: Object) => {
 			alert ("Error: " + error.toString ());
@@ -765,7 +816,7 @@ function getMonoRepo () : Repo {
 	const github = new GitHub ({
 		// HACK: A read-only access token to allow higher rate limits.
 		token: '319339f37f8f19b7b5ba92ebfcbdb965871440e0',
-		auth: 'oauth'
+		auth: 'oauth',
 	});
 	return github.getRepo ("mono", "mono");
 }

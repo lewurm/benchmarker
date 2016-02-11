@@ -69,6 +69,8 @@ class CreateRunSetIdStep(ParsingShellCommand):
         mono_version = self.getProperty(PROPERTYNAME_MONOVERSION)
         git_commit = self.getProperty(PROPERTYNAME_JENKINSGITCOMMIT)
         config_name = self.getProperty('config_name')
+        benchmarker_commit = self.getProperty('got_revision').get('benchmarker')
+        assert benchmarker_commit is not None
         cmd = ['mono', 'tools/compare.exe', '--create-run-set']
         if pullrequestid is not None:
             cmd.append('--pull-request-url')
@@ -86,6 +88,9 @@ class CreateRunSetIdStep(ParsingShellCommand):
         cmd.append('configs/%s.conf' % (config_name))
         cmd.append('--root')
         cmd.append(self.install_root(mono_version))
+        cmd.append('--secondary-product')
+        cmd.append('benchmarker')
+        cmd.append(benchmarker_commit)
         self.setCommand(cmd)
         ShellCommand.start(self)
 
@@ -173,3 +178,34 @@ class GithubWritePullrequestComment(LoggingBuildStep):
             data=json.dumps({'body': '\n'.join(payload)})
         )
         self.finished(SUCCESS)
+
+
+class GithubPostPRStatus(LoggingBuildStep):
+    def __init__(self, githubuser, githubrepo, githubtoken, state, *args, **kwargs):
+        self.githubuser = githubuser
+        self.githubrepo = githubrepo
+        self.githubtoken = githubtoken
+        assert state in ["pending", "success", "error", "failure"]
+        self.state = state
+        LoggingBuildStep.__init__(self, *args, **kwargs)
+
+    def start(self):
+        parse_pullrequest_id = self.getProperty(PROPERTYNAME_PULLREQUESTID)
+        buildername = self.getProperty('buildername')
+        buildnumber = self.getProperty('buildnumber')
+        pullrequest_commit_id = self.getProperty(PROPERTYNAME_JENKINSGITCOMMIT)
+
+        headers = {}
+        headers['content-type'] = 'application/json'
+        headers['Authorization'] = 'token ' + self.githubtoken
+        headers['state'] = self.state
+        headers['target_url'] = '%s/builders/%s/builds/%s' % (BUILDBOT_URL, buildername, str(buildnumber))
+        headers['context'] = 'continous-integration/performancebot'
+        headers['description'] = 'Benchmark results: http://xamarin.github.io/benchmarker/front-end/pullrequest.html#id=%s' % str(parse_pullrequest_id)
+
+        requests.post(
+            'https://api.github.com/repos/%s/%s/statuses/%s' % (self.githubuser, self.githubrepo, str(pullrequest_commit_id)),
+            headers=headers
+        )
+        self.finished(SUCCESS)
+

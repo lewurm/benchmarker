@@ -35,7 +35,7 @@ class Controller {
 					this.runSets = runSets;
 					this.checkAllDataLoaded ();
 				}, (error: Object) => {
-					alert ("error loading run sets: " + error.toString ());
+					alert ("error loading run sets (" + this.startupRunSetIds.join (', ') + "):\n" + error.toString ());
 				});
 		}
 	}
@@ -104,7 +104,8 @@ class Page extends React.Component<PageProps, PageState> {
 				runSetLabels={undefined}
 				graphName="comparisonChart"
 				runSets={runSets}
-				metric="time" />;
+				metric="time"
+				selectedIndices={[]}/>;
 		} else {
 			chart = <div className="DiagnosticBlock">Please select at least two run sets.</div>;
 		}

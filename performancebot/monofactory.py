@@ -8,7 +8,7 @@ from buildbot.steps.source import git
 from buildbot.status.builder import SUCCESS
 
 from constants import BUILDBOT_URL, PROPERTYNAME_RUNSETID, PROPERTYNAME_PULLREQUESTID, PROPERTYNAME_SKIP_BENCHS, PROPERTYNAME_FILTER_BENCHS, PROPERTYNAME_JENKINSGITHUBPULLREQUEST, PROPERTYNAME_COMPARE_JSON, BENCHMARKER_BRANCH, MONO_SGEN_GREP_BINPROT_GITREV, MONO_SGEN_GREP_BINPROT_FILENAME, MASTERWORKDIR
-from monosteps import CreateRunSetIdStep, GithubWritePullrequestComment, ParsingShellCommand, GrabBinaryLogFilesStep, ProcessBinaryProtocolFiles
+from monosteps import CreateRunSetIdStep, GithubWritePullrequestComment, GithubPostPRStatus, ParsingShellCommand, GrabBinaryLogFilesStep, ProcessBinaryProtocolFiles
 
 import re
 
@@ -132,6 +132,8 @@ class DebianMonoBuildFactory(BuildFactory):
             name='cp_config',
             command=[
                 'bash',
+                '-o',
+                'pipefail',
                 '-c',
                 Interpolate(
                     'cp -v %s/benchmarker/configs/' % MASTERWORKDIR +
@@ -146,6 +148,8 @@ class DebianMonoBuildFactory(BuildFactory):
             name='cp_machine',
             command=[
                 'bash',
+                '-o',
+                'pipefail',
                 '-c',
                 Interpolate(
                     'cp -v %s/benchmarker/machines/' % MASTERWORKDIR +
@@ -255,6 +259,11 @@ class DebianMonoBuildFactory(BuildFactory):
             return step.build.getProperties().has_key(PROPERTYNAME_JENKINSGITHUBPULLREQUEST)
         self.addStep(GithubWritePullrequestComment(name='report_github', githubuser='mono', githubrepo='mono', githubtoken=secret_github_token, doStepIf=_guard_pullrequest_only))
 
+    def report_github_status(self, secret_github_token, state):
+        def _guard_pullrequest_only(step):
+            return step.build.getProperties().has_key(PROPERTYNAME_JENKINSGITHUBPULLREQUEST)
+        self.addStep(GithubPostPRStatus(name='report_github_status', githubuser='mono', githubrepo='mono', githubtoken=secret_github_token, state=state, doStepIf=_guard_pullrequest_only))
+
     def print_runsetid(self):
         self.addStep(
             ShellCommand(
@@ -363,6 +372,7 @@ def benchmark_step(benchmark_name, commit_renderer, compare_args, root_renderer,
            '--log-url', Interpolate(BUILDBOT_URL + '/builders/%(prop:buildername)s/builds/%(prop:buildnumber)s'),
            '--root', root_renderer(),
            '--main-product', 'mono', commit_renderer(),
+           '--secondary-product', 'benchmarker', DetermineProductRevision('benchmarker'),
            '--run-set-id', Interpolate('%(prop:' + PROPERTYNAME_RUNSETID + ')s'),
            '--config-file', Interpolate('configs/%(prop:config_name)s.conf')
           ]
@@ -407,11 +417,16 @@ def benchmark_step(benchmark_name, commit_renderer, compare_args, root_renderer,
 from buildbot.interfaces import IRenderable
 from zope.interface import implements
 
-class DetermineMonoRevision(object):
+class DetermineProductRevision(object):
     implements(IRenderable)
+
+    def __init__(self, product):
+        self.product = product
+
     #pylint: disable=R0201
     def getRenderingFor(self, props):
-        if props.hasProperty('got_revision'):
-            return props['got_revision']['mono']
-        return "failed revision lookup"
+        assert props.hasProperty('got_revision')
+        products = props['got_revision']
+        assert self.product in products
+        return products[self.product]
     #pylint: enable=R0201

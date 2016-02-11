@@ -1,0 +1,40 @@
+@import "common";
+
+.RunSetSelectorList > section > .RunSetSelector {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+/* RunSetSelectorList */
+
+.RunSetSelectorList {
+	background: white;
+	.round-bordered();
+	float: left;
+	margin-right: 16px;
+	padding: 8px;
+	width: 320px;
+}
+
+.RunSetSelectorList > section {
+	background: @gray1;
+	.round-bordered();
+	margin-bottom: 8px;
+	clear: both;
+}
+
+.RunSetSelectorList > footer {
+	clear: both;
+}
+
+.RunSetSelectorList > section > button {
+	float: right;
+	margin: 8px;
+}
+
+/* ComparisonChart */
+
+.ComparisonChart {
+	vertical-align: top;
+	overflow: hidden; /* BFC */
+}
